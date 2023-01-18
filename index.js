@@ -1,39 +1,60 @@
+require("dotenv").config();
 const express = require("express");
 const cookieParser = require("cookie-parser");
+const cookieSession = require("cookie-session");
+const passport = require("passport");
+require("./passport.setup");
+
+const app = express();
+const port = process.env.PORT || 3000;
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 
-const app = express();
-
-app.use("/api", routes);
-
-app.get("/", (req, res) =>
-  res
-    .status(status.OK)
-    .json(apiResponse(status.OK, "OK", "Welcome to Express Auth API."))
+app.use(
+  cookieSession({
+    name: "oauth-session",
+    keys: ["key1", "key2"],
+  })
 );
 
-// catch 404 and forward to error handler
-app.use((req, res) =>
-  res
-    .status(status.NOT_FOUND)
-    .json(apiNotFoundResponse("The requested resource could not be found"))
+const isLoggedIn = (req, res, next) => {
+  if (req.user) {
+    next();
+  } else {
+    res.sendStatus(401);
+  }
+};
+
+app.use(passport.initialize());
+app.use(passport.session());
+
+app.get("/", (req, res) => res.send("Your not logged in"));
+app.get("/failed", (req, res) => res.send("You Failed to log in"));
+app.get("/good", isLoggedIn, (req, res) =>
+  res.send(`wellcome mr ${req.user.displayName}`)
 );
 
-// error handler
-app.use((err, req, res, next) =>
-  res
-    .status(status.INTERNAL_SERVER_ERROR)
-    .json(
-      apiResponse(
-        status.INTERNAL_SERVER_ERROR,
-        "INTERNAL_SERVER_ERROR",
-        err.message
-      )
-    )
+app.get(
+  "/google",
+  passport.authenticate("google", { scope: ["profile", "email"] })
 );
+
+app.get(
+  "/google/callback",
+  passport.authenticate("google", { failureRedirect: "/failed" }),
+  function (req, res) {
+    // Successful authentication, redirect home.
+    res.redirect("/good");
+  }
+);
+
+app.get("/logout", (req, res) => {
+  req.session = null;
+  req.logout();
+  res.redirect("/");
+});
 
 app.listen(port, () => {
   console.info(`======= Server is running on http://localhost:${port} =======`);
